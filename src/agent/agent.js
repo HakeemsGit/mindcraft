@@ -7,6 +7,7 @@ import { containsCommand, commandExists, executeCommand, truncCommandMessage, is
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
+import { TaskQueue } from './task_queue.js';
 import settings from '../../settings.js';
 
 
@@ -19,6 +20,7 @@ export class Agent {
         this.npc = new NPCContoller(this);
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
+        this.task_queue = new TaskQueue();
 
         await this.prompter.initExamples();
 
@@ -110,8 +112,23 @@ export class Agent {
             const user_command_name = containsCommand(message);
             if (user_command_name) {
                 if (!commandExists(user_command_name)) {
-                    this.bot.chat(`Command '${user_command_name}' does not exist.`);
-                    return false;
+                    if (user_command_name === '!addTask') {
+                        const task = message.substring(message.indexOf(' ') + 1);
+                        this.addTask(task);
+                        return true;
+                    } else if (user_command_name === '!executeTasks') {
+                        await this.executeTasks();
+                        return true;
+                    } else if (user_command_name === '!clearTasks') {
+                        this.clearTasks();
+                        return true;
+                    } else if (user_command_name === '!listTasks') {
+                        this.listTasks();
+                        return true;
+                    } else {
+                        this.bot.chat(`Command '${user_command_name}' does not exist.`);
+                        return false;
+                    }
                 }
                 this.bot.chat(`*${source} used ${user_command_name.substring(1)}*`);
                 if (user_command_name === '!newAction') {
@@ -278,6 +295,38 @@ export class Agent {
         this.bot.chat('Goodbye world.')
         this.history.save();
         process.exit(1);
+    }
+
+    addTask(task) {
+        this.task_queue.addTask(task);
+        this.bot.chat(`Added task to queue: ${task}`);
+    }
+
+    async executeTasks() {
+        if (this.task_queue.getTasks().length > 0) {
+            this.bot.chat('Executing queued tasks...');
+            await this.task_queue.executeTasks(this);
+            this.bot.chat('All queued tasks completed.');
+        } else {
+            this.bot.chat('No tasks in the queue.');
+        }
+    }
+
+    clearTasks() {
+        this.task_queue.clearTasks();
+        this.bot.chat('Task queue cleared.');
+    }
+
+    listTasks() {
+        const tasks = this.task_queue.getTasks();
+        if (tasks.length > 0) {
+            this.bot.chat('Current tasks in queue:');
+            tasks.forEach((task, index) => {
+                this.bot.chat(`${index + 1}. ${task}`);
+            });
+        } else {
+            this.bot.chat('No tasks in the queue.');
+        }
     }
 }
 
